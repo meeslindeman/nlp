@@ -1,0 +1,22 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_mig            # Use the appropriate GPU partition
+#SBATCH --gpus=1                       # Request 1 GPU
+#SBATCH --job-name=install_env         # Job name
+#SBATCH --ntasks=1                     # Number of tasks
+#SBATCH --cpus-per-task=9              # Number of CPU cores
+#SBATCH --time=04:00:00                # Max runtime
+#SBATCH --output=slurm_output_nlp1_%A.out  # Output log file
+
+module purge
+module load 2023
+module load Anaconda3/2023.07-2
+
+# Navigate to your working directory
+cd $HOME/your_project_directory/
+
+# Create the Conda environment using the updated YAML file
+conda env create -f nlp1.yml
+
+# Optional: Check if the environment was installed successfully
+conda info --envs
