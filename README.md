@@ -30,7 +30,7 @@ This project implements and compares multiple neural network architectures for s
 - **Experiment Tracking**: Automatic logging of results and hyperparameters
 - **Reproducible Results**: Seed-based random state management
 
-## Requirements
+## Usage
 
 This project uses conda for dependency management. Install the required packages using:
 
@@ -41,7 +41,17 @@ conda activate nlp
 
 Alternatively, you can create the environment manually with the dependencies specified in `environment.yml`.
 
-## Usage
+### Setup
+
+Before running the code, you need to extract the dataset:
+
+
+```bash
+cd resources
+unzip trainDevTestTrees_PTB.zip
+```
+
+This will extract the Stanford Sentiment Treebank dataset required for training.
 
 ### Basic Training
 
