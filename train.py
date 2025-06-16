@@ -34,7 +34,7 @@ def prepare_example(batch, vocab, device):
     y = torch.LongTensor(batch_labels).to(device)
     return x, y
 
-def simple_evaluate(model, data, prep_fn=prepare_example, device="cpu", average="macro", scores=False):
+def simple_evaluate(model, data, prep_fn=prepare_example, device="cpu", average="macro", scores=False, **kwargs):
     """
     Evaluates model accuracy on a given dataset.
     
@@ -111,19 +111,13 @@ def train_model(
     model, optimizer, train_data, dev_data, test_data,
     num_iterations=10000, print_every=1000, eval_every=1000,
     batch_fn=get_examples, prep_fn=prepare_example, eval_fn=simple_evaluate,
-    batch_size=1, eval_batch_size=None, log_dir="logs", device="cpu", scores=False
+    batch_size=1, eval_batch_size=None, log_dir="logs", device="cpu", 
+    scores=False, scheduler=None, patience=5
 ):
     """
     Trains a model with given parameters and tracks metrics for plotting.
-    
-    Args:
-        (same as before)
-
-    Returns:
-        losses: List of training losses.
-        accuracies: List of validation accuracies.
     """
-    log_dir = Path(log_dir) / model.__class__.__name__
+    log_dir = Path(log_dir)
     log_dir.mkdir(exist_ok=True, parents=True)
 
     print(f"Training {model.__class__.__name__}...")
@@ -131,6 +125,8 @@ def train_model(
     criterion = nn.CrossEntropyLoss()
     best_eval, best_iter = 0., 0
     train_loss, iter_i = 0., 0
+    no_improvement = 0
+    stop_training = False
     losses, accuracies, steps = [], [], []
     start = time.time()
 
@@ -139,8 +135,8 @@ def train_model(
 
     # Add tqdm progress bar
     with tqdm(total=num_iterations, desc="Training Progress", dynamic_ncols=True) as pbar:
-        while iter_i < num_iterations:
-            for batch in batch_fn(train_data, shuffle=True, batch_size=batch_size):
+        while iter_i < num_iterations and not stop_training:
+            for batch in batch_fn(train_data, batch_size=batch_size):
                 model.train()
                 x, targets = prep_fn(batch, model.vocab, device)
                 logits = model(x)
@@ -154,6 +150,9 @@ def train_model(
                 iter_i += 1
                 pbar.update(1)  # Update the progress bar
 
+                if scheduler is not None:
+                    scheduler.step()
+
                 # Evaluate periodically
                 if iter_i % eval_every == 0:
                     _, _, metrics = eval_fn(model, dev_data, prep_fn=prep_fn, device=device, scores=scores)
@@ -163,13 +162,15 @@ def train_model(
                     accuracies.append(accuracy)
                     steps.append(iter_i)
 
+
                     # Reset train_loss after storing
                     train_loss = 0.
 
                     # Update the tqdm bar with custom metrics
                     pbar.set_postfix({
                         "Loss": f"{losses[-1]:.4f}",
-                        "Accuracy": f"{accuracy:.4f}"
+                        "Accuracy": f"{accuracy:.4f}",
+                        "LR": optimizer.param_groups[0]["lr"]
                     })
 
                     if accuracy > best_eval:
@@ -183,8 +184,49 @@ def train_model(
                             },
                             log_dir / f"{model.__class__.__name__}.pt"
                         )
+                        no_improvement = 0
+                    else:
+                        no_improvement += 1
+
+                    if no_improvement >= patience:
+                        print(f"Early stopping triggered at iteration {iter_i}")
+                        stop_training = True  # Set the flag to stop training
+                        break
 
                 if iter_i >= num_iterations:
+                    stop_training = True  # Ensure stopping at the maximum iterations
                     break
+
+    print("Done training")
+
+    # Load the best model and evaluate
+    print("Loading best model")
+    path = log_dir / "{}.pt".format(model.__class__.__name__)
+    ckpt = torch.load(path)
+    model.load_state_dict(ckpt["state_dict"])
+
+    _, _, train_metrics = eval_fn(
+        model, train_data, batch_size=eval_batch_size,
+        batch_fn=batch_fn, prep_fn=prep_fn)
+    _, _, dev_metrics = eval_fn(
+        model, dev_data, batch_size=eval_batch_size,
+        batch_fn=batch_fn, prep_fn=prep_fn)
+    _, _, test_metrics = eval_fn(
+        model, test_data, batch_size=eval_batch_size,
+        batch_fn=batch_fn, prep_fn=prep_fn)
+
+    train_acc = train_metrics["accuracy"]
+    dev_acc = dev_metrics["accuracy"]
+    test_acc = test_metrics["accuracy"]
+
+    print("Best model iter {:d}: "
+          "train acc={:.4f}, dev acc={:.4f}, test acc={:.4f}".format(
+              best_iter, train_acc, dev_acc, test_acc))
+
+    metrics.update({
+        "train_acc": train_acc,
+        "dev_acc": dev_acc,
+        "test_acc": test_acc
+    })
 
     return losses, accuracies, metrics

@@ -1,4 +1,4 @@
-name: nlp1
+name: nlp
 channels:
   - pytorch
   - nvidia

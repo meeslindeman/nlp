@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from lstm import MyLSTMCell, TreeLSTMCell
+from lstm import MyLSTMCell, ChildSumTreeLSTMCell, NAryTreeLSTMCell
 from batch_utils import batch, unbatch
 
 def print_model_parameters(model):
@@ -181,14 +181,17 @@ class LSTMClassifier(nn.Module):
 class TreeLSTM(nn.Module):
   """Encodes a sentence using a TreeLSTMCell"""
 
-  def __init__(self, input_size, hidden_size, bias=True):
+  def __init__(self, input_size, hidden_size, bias=True, tree="nary"):
     """Creates the weights for this LSTM"""
     super(TreeLSTM, self).__init__()
-
+    
     self.input_size = input_size
     self.hidden_size = hidden_size
     self.bias = bias
-    self.reduce = TreeLSTMCell(input_size, hidden_size)
+    if tree == "childsum":
+      self.reduce = ChildSumTreeLSTMCell(input_size, hidden_size, bias=bias)
+    elif tree == "nary":
+      self.reduce = NAryTreeLSTMCell(input_size, hidden_size, bias=bias)
 
     # project word to initial c
     self.proj_x = nn.Linear(input_size, hidden_size)
@@ -264,19 +267,18 @@ class TreeLSTM(nn.Module):
 class TreeLSTMClassifier(nn.Module):
   """Encodes sentence with a TreeLSTM and projects final hidden state"""
 
-  def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, vocab):
+  def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, vocab, tree):
     super(TreeLSTMClassifier, self).__init__()
     self.vocab = vocab
     self.hidden_dim = hidden_dim
     self.embed = nn.Embedding(vocab_size, embedding_dim, padding_idx=1)
-    self.treelstm = TreeLSTM(embedding_dim, hidden_dim)
+    self.treelstm = TreeLSTM(embedding_dim, hidden_dim, tree=tree)
     self.output_layer = nn.Sequential(
         nn.Dropout(p=0.5),
         nn.Linear(hidden_dim, output_dim, bias=True)
     )
 
   def forward(self, x):
-
     # x is a pair here of words and transitions; we unpack it here.
     # x is batch-major: [B, T], transitions is time major [2T-1, B]
     x, transitions = x

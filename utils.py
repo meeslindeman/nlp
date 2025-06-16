@@ -55,6 +55,18 @@ def load_data(lower=False):
         datasets[split] = list(examplereader(path, lower=lower))
     return datasets
 
+import random
+
+# Function to shuffle tokens in an Example
+def shuffle_tokens_in_example(example):
+    shuffled_tokens = example.tokens[:]  # Copy the original tokens
+    random.shuffle(shuffled_tokens)  # Shuffle the tokens in place
+    return Example(tokens=shuffled_tokens, tree=example.tree, label=example.label, transitions=example.transitions)
+
+# Function to shuffle tokens in the entire dataset
+def shuffle_dataset(dataset):
+    return [shuffle_tokens_in_example(example) for example in dataset]
+
 def set_seed(seed):
     """Sets the seed for reproducibility."""
     torch.manual_seed(seed)
@@ -110,6 +122,47 @@ def prepare_resources(data_dir="resources"):
     word2vec_url = "https://gist.githubusercontent.com/bastings/4d1c346c68969b95f2c34cfbc00ba0a0/raw/76b4fefc9ef635a79d0d8002522543bc53ca2683/googlenews.word2vec.300d.txt"
     word2vec_path = data_dir / "googlenews.word2vec.300d.txt"
     download_file(word2vec_url, word2vec_path)
+
+def extract_subtrees_from_tree(tree):
+    """
+    Extract subtrees from an NLTK Tree object.
+    
+    Args:
+        tree: An NLTK Tree object.
+
+    Returns:
+        A list of subtrees as tuples (subtree, subtree string).
+    """
+    subtrees = []
+    for i in range(3, 100):  # Height of the subtree to extract
+        for t in tree.subtrees(lambda t: t.height() == i):
+            subtrees.append((t, ' '.join(str(t).split())))
+    return subtrees
+
+
+def augment_with_subtrees(dataset, lower=False):
+    """
+    Augments a dataset with subtrees from each tree.
+    
+    Args:
+        dataset: A list of Example objects, each containing a tree.
+        lower: Whether to lowercase the tokens in the subtree strings.
+
+    Returns:
+        A list of augmented Example objects including subtrees.
+    """
+    augmented_data = []
+    for example in dataset:
+        tree = example.tree  # Assuming each example contains an NLTK Tree object
+        subtrees = extract_subtrees_from_tree(tree)
+        
+        for subtree, subtree_string in subtrees:
+            subtree_string = subtree_string.lower() if lower else subtree_string
+            tokens = tokens_from_treestring(subtree_string)
+            label = int(subtree_string[1])  # Extract root label
+            transitions = transitions_from_treestring(subtree_string)
+            augmented_data.append(Example(tokens=tokens, tree=subtree, label=label, transitions=transitions))
+    return augmented_data
 
 
 
